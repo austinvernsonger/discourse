@@ -1,19 +1,25 @@
-module("Discourse.Markdown", {
-  setup: function() {
-    Discourse.SiteSettings.traditional_markdown_linebreaks = false;
-    Discourse.SiteSettings.default_code_lang = "auto";
-  }
-});
+import Quote from 'discourse/lib/quote';
+import Post from 'discourse/models/post';
+import PrettyText from 'discourse/lib/pretty-text';
 
-var cooked = function(input, expected, text) {
-  var result = Discourse.Markdown.cook(input, {sanitize: true});
-  expected = expected.replace(/\/>/g, ">");
-  // result = result.replace("/>", ">");
-  equal(result, expected, text);
+module("lib:pretty-text");
+
+const defaultOpts = {
+  traditionalMarkdownLinebreaks: false,
+  defaultCodeLang: 'auto',
+  sanitize: true
 };
 
-var cookedOptions = function(input, opts, expected, text) {
-  equal(Discourse.Markdown.cook(input, opts), expected, text);
+function cooked(input, expected, text) {
+  equal(new PrettyText(defaultOpts).cook(input), expected.replace(/\/>/g, ">"), text);
+};
+
+function cookedOptions(input, opts, expected, text) {
+  equal(new PrettyText(opts).cook(input), expected, text);
+};
+
+function cookedPara(input, expected, text) {
+  cooked(input, `<p>${expected}</p>`, text);
 };
 
 test("basic cooking", function() {
@@ -35,18 +41,11 @@ test("Nested bold and italics", function() {
 });
 
 test("Traditional Line Breaks", function() {
-  var input = "1\n2\n3";
+  const input = "1\n2\n3";
   cooked(input, "<p>1<br/>2<br/>3</p>", "automatically handles trivial newlines");
 
-  var traditionalOutput = "<p>1\n2\n3</p>";
-
-  cookedOptions(input,
-                {traditional_markdown_linebreaks: true},
-                traditionalOutput,
-                "It supports traditional markdown via an option");
-
-  Discourse.SiteSettings.traditional_markdown_linebreaks = true;
-  cooked(input, traditionalOutput, "It supports traditional markdown via a Site Setting");
+  const result = new PrettyText({ traditionalMarkdownLinebreaks: true }).cook(input);
+  equal(result, "<p>1\n2\n3</p>");
 });
 
 test("Unbalanced underscores", function() {
@@ -145,7 +144,7 @@ test("Links", function() {
 
   cooked("[http://google.com ... wat](http://discourse.org)",
          "<p><a href=\"http://discourse.org\">http://google.com ... wat</a></p>",
-         "it supports linkins within links");
+         "it supports links within links");
 
   cooked("[Link](http://www.example.com) (with an outer \"description\")",
          "<p><a href=\"http://www.example.com\">Link</a> (with an outer \"description\")</p>",
@@ -202,7 +201,7 @@ test("Quotes", function() {
 
 test("Mentions", function() {
 
-  var alwaysTrue = { mentionLookup: (function() { return "user"; }) };
+  const alwaysTrue = { mentionLookup: (function() { return "user"; }) };
 
   cookedOptions("Hello @sam", alwaysTrue,
                 "<p>Hello <a class=\"mention\" href=\"/users/sam\">@sam</a></p>",
@@ -290,7 +289,7 @@ test("Mentions", function() {
 });
 
 test("Category hashtags", () => {
-  var alwaysTrue = { categoryHashtagLookup: (function() { return ["http://test.discourse.org/category-hashtag", "category-hashtag"]; }) };
+  const alwaysTrue = { categoryHashtagLookup: (function() { return ["http://test.discourse.org/category-hashtag", "category-hashtag"]; }) };
 
   cookedOptions("Check out #category-hashtag", alwaysTrue,
          "<p>Check out <a class=\"hashtag\" href=\"http://test.discourse.org/category-hashtag\">#<span>category-hashtag</span></a></p>",
@@ -360,8 +359,8 @@ test("New Lines", function() {
 
 test("Oneboxing", function() {
 
-  var matches = function(input, regexp) {
-    return Discourse.Markdown.cook(input).match(regexp);
+  function matches(input, regexp) {
+    return new PrettyText().cook(input).match(regexp);
   };
 
   ok(!matches("- http://www.textfiles.com/bbs/MINDVOX/FORUMS/ethics\n\n- http://drupal.org", /onebox/),
@@ -473,7 +472,7 @@ test("Code Blocks", function() {
 });
 
 test("sanitize", function() {
-  var sanitize = Discourse.Markdown.sanitize;
+  const sanitize = Discourse.Markdown.sanitize;
 
   equal(sanitize("<i class=\"fa-bug fa-spin\">bug</i>"), "<i>bug</i>");
   equal(sanitize("<div><script>alert('hi');</script></div>"), "<div></div>");
@@ -532,9 +531,9 @@ test("URLs in BBCode tags", function() {
 });
 
 test("urlAllowed", function() {
-  var urlAllowed = Discourse.Markdown.urlAllowed;
+  const urlAllowed = Discourse.Markdown.urlAllowed;
 
-  var allowed = function(url, msg) {
+  const allowed = function(url, msg) {
     equal(urlAllowed(url), url, msg);
   };
 
@@ -579,4 +578,145 @@ test("code blocks/spans hoisting", function() {
   cooked("`$&`",
          "<p><code>$&amp;</code></p>",
          "it works even when hoisting special replacement patterns");
+});
+
+test('basic bbcode', function() {
+  cookedPara("[b]strong[/b]", "<span class=\"bbcode-b\">strong</span>", "bolds text");
+  cookedPara("[i]emphasis[/i]", "<span class=\"bbcode-i\">emphasis</span>", "italics text");
+  cookedPara("[u]underlined[/u]", "<span class=\"bbcode-u\">underlined</span>", "underlines text");
+  cookedPara("[s]strikethrough[/s]", "<span class=\"bbcode-s\">strikethrough</span>", "strikes-through text");
+  cookedPara("[img]http://eviltrout.com/eviltrout.png[/img]", "<img src=\"http://eviltrout.com/eviltrout.png\">", "links images");
+  cookedPara("[email]eviltrout@mailinator.com[/email]", "<a href=\"mailto:eviltrout@mailinator.com\">eviltrout@mailinator.com</a>", "supports [email] without a title");
+  cookedPara("[b]evil [i]trout[/i][/b]",
+         "<span class=\"bbcode-b\">evil <span class=\"bbcode-i\">trout</span></span>",
+         "allows embedding of tags");
+  cookedPara("[EMAIL]eviltrout@mailinator.com[/EMAIL]", "<a href=\"mailto:eviltrout@mailinator.com\">eviltrout@mailinator.com</a>", "supports upper case bbcode");
+  cookedPara("[b]strong [b]stronger[/b][/b]", "<span class=\"bbcode-b\">strong <span class=\"bbcode-b\">stronger</span></span>", "accepts nested bbcode tags");
+});
+
+test('urls', function() {
+  cookedPara("[url]not a url[/url]", "not a url", "supports [url] that isn't a url");
+  cookedPara("[url]http://bettercallsaul.com[/url]", "<a href=\"http://bettercallsaul.com\">http://bettercallsaul.com</a>", "supports [url] without parameter");
+  cookedPara("[url=http://example.com]example[/url]", "<a href=\"http://example.com\">example</a>", "supports [url] with given href");
+  cookedPara("[url=http://www.example.com][img]http://example.com/logo.png[/img][/url]",
+         "<a href=\"http://www.example.com\"><img src=\"http://example.com/logo.png\"></a>",
+         "supports [url] with an embedded [img]");
+});
+test('invalid bbcode', function() {
+  const result = new PrettyText({ lookupAvatar: false }).cook("[code]I am not closed\n\nThis text exists.");
+  equal(result, "<p>[code]I am not closed</p>\n\n<p>This text exists.</p>", "does not raise an error with an open bbcode tag.");
+});
+
+test('code', function() {
+  cookedPara("[code]\nx++\n[/code]", "<pre><code class=\"lang-auto\">x++</code></pre>", "makes code into pre");
+  cookedPara("[code]\nx++\ny++\nz++\n[/code]", "<pre><code class=\"lang-auto\">x++\ny++\nz++</code></pre>", "makes code into pre");
+  cookedPara("[code]abc\n#def\n[/code]", '<pre><code class=\"lang-auto\">abc\n#def</code></pre>', 'it handles headings in a [code] block');
+  cookedPara("[code]\n   s[/code]",
+         "<pre><code class=\"lang-auto\">   s</code></pre>",
+         "it doesn't trim leading whitespace");
+});
+
+test('lists', function() {
+  cookedPara("[ul][li]option one[/li][/ul]", "<ul><li>option one</li></ul>", "creates an ul");
+  cookedPara("[ol][li]option one[/li][/ol]", "<ol><li>option one</li></ol>", "creates an ol");
+  cookedPara("[ul]\n[li]option one[/li]\n[li]option two[/li]\n[/ul]", "<ul><li>option one</li><li>option two</li></ul>", "suppresses empty lines in lists");
+});
+
+test('tags with arguments', function() {
+  cookedPara("[url=http://bettercallsaul.com]better call![/url]", "<a href=\"http://bettercallsaul.com\">better call!</a>", "supports [url] with a title");
+  cookedPara("[email=eviltrout@mailinator.com]evil trout[/email]", "<a href=\"mailto:eviltrout@mailinator.com\">evil trout</a>", "supports [email] with a title");
+  cookedPara("[u][i]abc[/i][/u]", "<span class=\"bbcode-u\"><span class=\"bbcode-i\">abc</span></span>", "can nest tags");
+  cookedPara("[b]first[/b] [b]second[/b]", "<span class=\"bbcode-b\">first</span> <span class=\"bbcode-b\">second</span>", "can bold two things on the same line");
+});
+
+
+test("quotes", function() {
+  const post = Post.create({
+    cooked: "<p><b>lorem</b> ipsum</p>",
+    username: "eviltrout",
+    post_number: 1,
+    topic_id: 2
+  });
+
+  function formatQuote(val, expected, text) {
+    equal(Quote.build(post, val), expected, text);
+  };
+
+  formatQuote(undefined, "", "empty string for undefined content");
+  formatQuote(null, "", "empty string for null content");
+  formatQuote("", "", "empty string for empty string content");
+
+  formatQuote("lorem", "[quote=\"eviltrout, post:1, topic:2\"]\nlorem\n[/quote]\n\n", "correctly formats quotes");
+
+  formatQuote("  lorem \t  ",
+              "[quote=\"eviltrout, post:1, topic:2\"]\nlorem\n[/quote]\n\n",
+              "trims white spaces before & after the quoted contents");
+
+  formatQuote("lorem ipsum",
+              "[quote=\"eviltrout, post:1, topic:2, full:true\"]\nlorem ipsum\n[/quote]\n\n",
+              "marks quotes as full when the quote is the full message");
+
+  formatQuote("**lorem** ipsum",
+              "[quote=\"eviltrout, post:1, topic:2, full:true\"]\n**lorem** ipsum\n[/quote]\n\n",
+               "keeps BBCode formatting");
+
+  formatQuote("this is <not> a bug",
+              "[quote=\"eviltrout, post:1, topic:2\"]\nthis is &lt;not&gt; a bug\n[/quote]\n\n",
+              "it escapes the contents of the quote");
+
+  cookedPara("[quote]test[/quote]",
+         "<aside class=\"quote\"><blockquote><p>test</p></blockquote></aside>",
+         "it supports quotes without params");
+
+  cookedPara("[quote]\n*test*\n[/quote]",
+         "<aside class=\"quote\"><blockquote><p><em>test</em></p></blockquote></aside>",
+         "it doesn't insert a new line for italics");
+
+  cookedPara("[quote=,script='a'><script>alert('test');//':a][/quote]",
+         "<aside class=\"quote\"><blockquote></blockquote></aside>",
+         "It will not create a script tag within an attribute");
+});
+
+test("quote formatting", function() {
+
+  cooked("[quote=\"EvilTrout, post:123, topic:456, full:true\"][sam][/quote]",
+          "<aside class=\"quote\" data-post=\"123\" data-topic=\"456\" data-full=\"true\"><div class=\"title\">" +
+          "<div class=\"quote-controls\"></div>EvilTrout:</div><blockquote><p>[sam]</p></blockquote></aside>",
+          "it allows quotes with [] inside");
+
+  cooked("[quote=\"eviltrout, post:1, topic:1\"]abc[/quote]",
+         "<aside class=\"quote\" data-post=\"1\" data-topic=\"1\"><div class=\"title\"><div class=\"quote-controls\"></div>eviltrout:" +
+         "</div><blockquote><p>abc</p></blockquote></aside>",
+         "renders quotes properly");
+
+  cooked("[quote=\"eviltrout, post:1, topic:1\"]abc[/quote]\nhello",
+         "<aside class=\"quote\" data-post=\"1\" data-topic=\"1\"><div class=\"title\"><div class=\"quote-controls\"></div>eviltrout:" +
+         "</div><blockquote><p>abc</p></blockquote></aside>\n\n<p>hello</p>",
+         "handles new lines properly");
+
+  cooked("[quote=\"Alice, post:1, topic:1\"]\n[quote=\"Bob, post:2, topic:1\"]\n[/quote]\n[/quote]",
+         "<aside class=\"quote\" data-post=\"1\" data-topic=\"1\"><div class=\"title\"><div class=\"quote-controls\"></div>Alice:" +
+         "</div><blockquote><aside class=\"quote\" data-post=\"2\" data-topic=\"1\"><div class=\"title\"><div class=\"quote-controls\"></div>Bob:" +
+         "</div><blockquote></blockquote></aside></blockquote></aside>",
+         "quotes can be nested");
+
+  cooked("[quote=\"Alice, post:1, topic:1\"]\n[quote=\"Bob, post:2, topic:1\"]\n[/quote]",
+         "<aside class=\"quote\" data-post=\"1\" data-topic=\"1\"><div class=\"title\"><div class=\"quote-controls\"></div>Alice:" +
+         "</div><blockquote><p>[quote=\"Bob, post:2, topic:1\"]</p></blockquote></aside>",
+         "handles mismatched nested quote tags");
+
+  cooked("[quote=\"Alice, post:1, topic:1\"]\n```javascript\nvar foo ='foo';\nvar bar = 'bar';\n```\n[/quote]",
+          "<aside class=\"quote\" data-post=\"1\" data-topic=\"1\"><div class=\"title\"><div class=\"quote-controls\"></div>Alice:</div><blockquote><p><pre><code class=\"lang-javascript\">var foo =&#x27;foo&#x27;;\nvar bar = &#x27;bar&#x27;;</code></pre></p></blockquote></aside>",
+          "quotes can have code blocks without leading newline");
+  cooked("[quote=\"Alice, post:1, topic:1\"]\n\n```javascript\nvar foo ='foo';\nvar bar = 'bar';\n```\n[/quote]",
+          "<aside class=\"quote\" data-post=\"1\" data-topic=\"1\"><div class=\"title\"><div class=\"quote-controls\"></div>Alice:</div><blockquote><p><pre><code class=\"lang-javascript\">var foo =&#x27;foo&#x27;;\nvar bar = &#x27;bar&#x27;;</code></pre></p></blockquote></aside>",
+          "quotes can have code blocks with leading newline");
+});
+
+test("quotes with trailing formatting", function() {
+  const result = new PrettyText({ lookupAvatar: false }).cook("[quote=\"EvilTrout, post:123, topic:456, full:true\"]\nhello\n[/quote]\n*Test*");
+  equal(result,
+        "<aside class=\"quote\" data-post=\"123\" data-topic=\"456\" data-full=\"true\"><div class=\"title\">" +
+        "<div class=\"quote-controls\"></div>EvilTrout:</div><blockquote><p>hello</p></blockquote></aside>\n\n<p><em>Test</em></p>",
+        "it allows trailing formatting");
 });

@@ -1,8 +1,7 @@
-module("MDTest", {
-  setup: function() {
-    Discourse.SiteSettings.traditional_markdown_linebreaks = false;
-  }
-});
+import PrettyText from 'discourse/lib/pretty-text';
+
+// Run the MDTest spec
+module("MDTest");
 
 // This is cheating, but the trivial differences between sanitization
 // do not affect formatting.
@@ -15,44 +14,37 @@ function normalize(str) {
 
 // We use a custom sanitizer for MD test that hoists out comments. In Discourse
 // they are stripped, but to be compliant with the spec they should not be.
-function hoistingSanitizer(result) {
-  var hoisted,
-      m = result.match(/<!--[\s\S]*?-->/g);
+function sanitizerFunction(result) {
+  let hoisted;
+  const m = result.match(/<!--[\s\S]*?-->/g);
   if (m && m.length) {
     hoisted = [];
-    for (var i=0; i<m.length; i++) {
-      var c = m[i],
-          id = md5("discourse:hoisted-comment:" + i);
+    for (let i=0; i<m.length; i++) {
+      const c = m[i];
+      const id = md5("discourse:hoisted-comment:" + i);
       result = result.replace(c, id);
       hoisted.push([c, id]);
     }
   }
 
   result = Discourse.Markdown.sanitize(result);
-
   if (hoisted) {
-    hoisted.forEach(function(tuple) {
-      result = result.replace(tuple[1], tuple[0]);
-    });
+    hoisted.forEach(tuple => result = result.replace(tuple[1], tuple[0]));
   }
 
   return result;
 }
 
-var md = function(input, expected, text) {
-  var result = Discourse.Markdown.cook(input, {
-        sanitizerFunction: hoistingSanitizer,
-        traditional_markdown_linebreaks: true
-      }),
-      resultNorm = normalize(result),
-      expectedNorm = normalize(expected),
-      same = (result === expected) || (resultNorm === expectedNorm);
+function md(input, expected, text) {
+  const cooker = new PrettyText({ traditionalMarkdownLinebreaks: true, sanitizerFunction  });
+  const result = cooker.cook(input);
+  const resultNorm = normalize(result);
+  const expectedNorm = normalize(expected);
+  const same = (result === expected) || (resultNorm === expectedNorm);
 
   if (same) {
     ok(same, text);
   } else {
-    console.log(resultNorm);
-    console.log(expectedNorm);
     equal(resultNorm, expectedNorm, text);
   }
 };

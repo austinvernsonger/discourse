@@ -170,20 +170,10 @@ window.Discourse = Ember.Application.extend(Discourse.Ajax, {
   })
 }).create();
 
-function RemovedObject(name) {
-  this._removedName = name;
-}
-
-function methodMissing() {
-  console.warn("The " + this._removedName + " object has been removed from Discourse " +
-               "and your plugin needs to be updated.");
+Discourse.Dialect = {
+  inlineRegexp: Ember.K,
+  addPreProcessor: Ember.K,
+  replaceBlock: Ember.K,
+  inlineReplace: Ember.K,
+  registerInline: Ember.K
 };
-
-Discourse.RemovedObject = RemovedObject;
-
-['reopen', 'registerButton', 'on', 'off'].forEach(function(m) { RemovedObject.prototype[m] = methodMissing; });
-
-['discourse/views/post', 'discourse/components/post-menu'].forEach(function(moduleName) {
-  define(moduleName, [], function() { return new RemovedObject(moduleName); });
-});
-

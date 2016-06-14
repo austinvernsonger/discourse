@@ -7,6 +7,7 @@ import { categoryHashtagTriggerRule } from 'discourse/lib/category-hashtags';
 import { TAG_HASHTAG_POSTFIX } from 'discourse/lib/tag-hashtags';
 import { search as searchCategoryTag  } from 'discourse/lib/category-tag-search';
 import { SEPARATOR } from 'discourse/lib/category-hashtags';
+import PrettyText from 'discourse/lib/pretty-text';
 
 // Our head can be a static string or a function that returns a string
 // based on input (like for numbered lists).
@@ -263,7 +264,7 @@ export default Ember.Component.extend({
     const markdownOptions = this.get('markdownOptions') || {};
     markdownOptions.sanitize = true;
 
-    this.set('preview', Discourse.Dialect.cook(value || "", markdownOptions));
+    this.set('preview', new PrettyText(markdownOptions).cook(value));
     Ember.run.scheduleOnce('afterRender', () => {
       if (this._state !== "inDOM") { return; }
       const $preview = this.$('.d-editor-preview');

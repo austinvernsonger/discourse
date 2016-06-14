@@ -213,27 +213,7 @@ Discourse.Markdown = {
 
     return window.html_sanitize(text, Discourse.Markdown.urlAllowed, validateAttribute);
   },
-
-  /**
-    Creates a Markdown.Converter that we we can use for formatting
-
-    @method markdownConverter
-    @param {Object} opts the converting options
-  **/
-  markdownConverter: function(opts) {
-    if (!opts) opts = {};
-
-    return {
-      makeHtml: function(text) {
-        text = Discourse.Dialect.cook(text, opts);
-        return !text ? "" : text;
-      }
-    };
-  }
-
 };
-
-RSVP.EventTarget.mixin(Discourse.Markdown);
 
 Discourse.Markdown.whiteListTag('a', 'class', 'attachment');
 Discourse.Markdown.whiteListTag('a', 'class', 'onebox');
